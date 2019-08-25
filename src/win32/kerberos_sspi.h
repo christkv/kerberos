@@ -45,14 +45,20 @@ typedef struct {
 } sspi_client_state;
 
 typedef struct {
-    WCHAR* username;
-    WCHAR* response;
+    CredHandle cred;
+    CtxtHandle ctx;
+    SEC_CHAR* response;
+    SEC_CHAR* username;
     BOOL context_complete;
     char* targetname;
 } sspi_server_state;
 
 sspi_client_state* sspi_client_state_new();
+sspi_server_state* sspi_server_state_new();
+
 VOID auth_sspi_client_clean(sspi_client_state* state);
+VOID auth_sspi_server_clean(sspi_server_state* state);
+
 sspi_result* auth_sspi_client_init(WCHAR* service,
                                    ULONG flags,
                                    WCHAR* user,
@@ -64,6 +70,10 @@ sspi_result* auth_sspi_client_init(WCHAR* service,
                                    WCHAR* mechoid,
                                    sspi_client_state* state);
 
+sspi_result* auth_sspi_server_init(WCHAR* service,
+                                   sspi_server_state* state);
+
 sspi_result* auth_sspi_client_step(sspi_client_state* state, SEC_CHAR* challenge, SecPkgContext_Bindings* sec_pkg_context_bindings);
+sspi_result* auth_sspi_server_step(sspi_server_state* state, const char* challenge);
 sspi_result* auth_sspi_client_unwrap(sspi_client_state* state, SEC_CHAR* challenge);
 sspi_result* auth_sspi_client_wrap(sspi_client_state* state, SEC_CHAR* data, SEC_CHAR* user, ULONG ulen, INT protect);

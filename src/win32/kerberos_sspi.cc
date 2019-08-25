@@ -11,10 +11,22 @@ static CHAR* wide_to_utf8(WCHAR* value);
 
 sspi_client_state* sspi_client_state_new() {
     sspi_client_state* state = (sspi_client_state*)malloc(sizeof(sspi_client_state));
-    state->username = NULL;
+    state->spn = NULL;
     state->response = NULL;
+    state->username = NULL;
     state->responseConf = 0;
     state->context_complete = FALSE;
+    return state;
+}
+
+sspi_server_state* sspi_server_state_new() {
+    sspi_server_state* state = (sspi_server_state*)malloc(sizeof(sspi_server_state));
+    SecInvalidateHandle(&state->ctx);
+    SecInvalidateHandle(&state->cred);
+    state->response = NULL;
+    state->username = NULL;
+    state->context_complete = FALSE;
+    state->targetname = NULL;
     return state;
 }
 
@@ -39,6 +51,30 @@ auth_sspi_client_clean(sspi_client_state* state) {
     if (state->username != NULL) {
         free(state->username);
         state->username = NULL;
+    }
+}
+
+VOID
+auth_sspi_server_clean(sspi_server_state* state) {
+    if (SecIsValidHandle(&state->ctx)) {
+        DeleteSecurityContext(&state->ctx);
+        SecInvalidateHandle(&state->ctx);
+    }
+    if (SecIsValidHandle(&state->cred)) {
+        FreeCredentialsHandle(&state->cred);
+        SecInvalidateHandle(&state->cred);
+    }
+    if (state->response != NULL) {
+        free(state->response);
+        state->response = NULL;
+    }
+    if (state->username != NULL) {
+        free(state->username);
+        state->username = NULL;
+    }
+    if (state->targetname != NULL) {
+        free(state->targetname);
+        state->targetname = NULL;
     }
 }
 
@@ -85,7 +121,7 @@ auth_sspi_client_init(WCHAR* service,
         authIdentity.Flags = SEC_WINNT_AUTH_IDENTITY_UNICODE;
     }
 
-    /* Note that the first paramater, pszPrincipal, appears to be
+    /* Note that the first parameter, pszPrincipal, appears to be
      * completely ignored in the Kerberos SSP. For more details see
      * https://github.com/mongodb-labs/winkerberos/issues/11.
      * */
@@ -112,6 +148,27 @@ auth_sspi_client_init(WCHAR* service,
     }
 
     state->haveCred = 1;
+    return sspi_success_result(AUTH_GSS_COMPLETE);
+}
+
+sspi_result*
+auth_sspi_server_init(WCHAR* service,
+                      sspi_server_state* state) {
+    auth_sspi_server_clean(state);
+    TimeStamp ignored;
+    SECURITY_STATUS status = AcquireCredentialsHandleW(NULL,
+                                                       L"Negotiate",
+                                                       SECPKG_CRED_INBOUND,
+                                                       NULL,
+                                                       NULL,
+                                                       NULL,
+                                                       NULL,
+                                                       &state->cred,
+                                                       &ignored);
+    if (status != SEC_E_OK) {
+        return sspi_error_result(status, "AcquireCredentialsHandle");
+    }
+
     return sspi_success_result(AUTH_GSS_COMPLETE);
 }
 
@@ -238,6 +295,159 @@ done:
 }
 
 sspi_result*
+auth_sspi_server_step(sspi_server_state* state, const char* challenge)
+{
+    sspi_result* ret = NULL;
+    ULONG Attribs = 0;
+    SecBufferDesc OutBuffDesc;
+    SecBuffer OutSecBuff;
+    SecBufferDesc InBuffDesc;
+    SecBuffer InSecBuff;
+    TimeStamp Lifetime;
+
+    // Clear the context if it is a new request
+    if (state->context_complete) {
+        if (SecIsValidHandle(&state->ctx)) {
+            DeleteSecurityContext(&state->ctx);
+            SecInvalidateHandle(&state->ctx);
+        }
+        if (state->username != NULL) {
+            free(state->username);
+            state->username = NULL;
+        }
+        state->context_complete = FALSE;
+    }
+
+    // Always clear the old response
+    if (state->response != NULL) {
+        free(state->response);
+        state->response = NULL;
+    }
+
+    // If there is a challenge (data from the client) we need to give it to SSPI
+    if (challenge && *challenge) {
+        // Prepare input buffer
+        DWORD len;
+        InSecBuff.pvBuffer = base64_decode(challenge, &len);
+        if (!InSecBuff.pvBuffer) {
+            return sspi_error_result_with_message("Unable to base64 decode challenge");
+        }
+        InSecBuff.cbBuffer = len;
+        InSecBuff.BufferType = SECBUFFER_TOKEN;
+
+        InBuffDesc.ulVersion = SECBUFFER_VERSION;
+        InBuffDesc.cBuffers = 1;
+        InBuffDesc.pBuffers = &InSecBuff;
+    } else {
+        return sspi_error_result_with_message("No challenge parameter in request from client");
+    }
+
+    PSecPkgInfoW pkgInfo;
+    if (QuerySecurityPackageInfoW(L"Negotiate", &pkgInfo) != SEC_E_OK) {
+        ret = sspi_error_result_with_message("Unable to get max token size for output buffer");
+        goto end;
+    }
+
+    // Prepare output buffer
+    OutSecBuff.cbBuffer = pkgInfo->cbMaxToken;
+    OutSecBuff.BufferType = SECBUFFER_TOKEN;
+    OutSecBuff.pvBuffer = malloc(pkgInfo->cbMaxToken);
+    if (OutSecBuff.pvBuffer == NULL) {
+        ret = sspi_error_result_with_message("Unable to allocate memory for output buffer");
+        goto end;
+    }
+
+    OutBuffDesc.ulVersion = SECBUFFER_VERSION;
+    OutBuffDesc.cBuffers = 1;
+    OutBuffDesc.pBuffers = &OutSecBuff;
+
+    SECURITY_STATUS ss = AcceptSecurityContext(&state->cred,
+                                               SecIsValidHandle(&state->ctx) ? &state->ctx : NULL,
+                                               &InBuffDesc,
+                                               Attribs,
+                                               SECURITY_NATIVE_DREP,
+                                               &state->ctx,
+                                               &OutBuffDesc,
+                                               &Attribs,
+                                               &Lifetime);
+
+    // Check if ready.
+    if (ss == SEC_E_OK) {
+        state->context_complete = TRUE;
+        ret = sspi_success_result(AUTH_GSS_COMPLETE);
+
+        // Get authenticated username.
+        SecPkgContext_NativeNamesW names;
+        SECURITY_STATUS ss = QueryContextAttributesW(&state->ctx, SECPKG_ATTR_NATIVE_NAMES, &names);
+
+        if (ss == SEC_E_OK) {
+            state->username = wide_to_utf8(names.sClientName);
+            FreeContextBuffer(names.sClientName);
+            if (state->username == NULL) {
+                ret = sspi_error_result_with_message("Unable to allocate memory for username");
+                goto end;
+            }
+            goto end;
+        }
+
+        // Impersonate the client (only if native names failed).
+        ss = ImpersonateSecurityContext(&state->ctx);
+        if (ss == SEC_E_OK) {
+            // Get username
+            DWORD cbUserName = 0;
+            GetUserName(NULL, &cbUserName);
+            state->username = (PCHAR)malloc(cbUserName);
+            if (state->username == NULL) {
+                ret = sspi_error_result_with_message("Unable to allocate memory for username");
+                goto end;
+            }
+
+            if (!GetUserName(state->username, &cbUserName)) {
+                ret = sspi_error_result_with_message("Unable to obtain username");
+                goto end;
+            }
+
+            RevertSecurityContext(&state->ctx);
+        } else {
+            ret = sspi_error_result_with_message("Unable to obtain username");
+            goto end;
+        }
+
+        goto end;
+    }
+
+    // Continue if applicable.
+    if (ss == SEC_I_CONTINUE_NEEDED) {
+        state->response = base64_encode((const SEC_CHAR*)OutSecBuff.pvBuffer, OutSecBuff.cbBuffer);
+        if (!state->response) {
+            ret = sspi_error_result_with_message("Unable to base64 encode response message");
+        } else {
+            ret = sspi_success_result(AUTH_GSS_CONTINUE);
+        }
+
+        goto end;
+    }
+
+    // Clear the context when reached an invalid/error state that cannot be handled
+    if (ss != SEC_E_OK) {
+        ret = sspi_error_result(ss, "AcceptSecurityContext failed");
+        if (SecIsValidHandle(&state->ctx)) {
+            DeleteSecurityContext(&state->ctx);
+            SecInvalidateHandle(&state->ctx);
+        }
+        goto end;
+    }
+
+end:
+    if (InSecBuff.pvBuffer)
+        free(InSecBuff.pvBuffer);
+    if (OutSecBuff.pvBuffer)
+        free(OutSecBuff.pvBuffer);
+
+    return ret;
+}
+
+sspi_result*
 auth_sspi_client_unwrap(sspi_client_state* state, SEC_CHAR* challenge) {
     sspi_result* result;
     SECURITY_STATUS status;
@@ -279,7 +489,7 @@ auth_sspi_client_unwrap(sspi_client_state* state, SEC_CHAR* challenge) {
     if (wrapBufs[1].cbBuffer) {
         state->response = base64_encode((const SEC_CHAR*)wrapBufs[1].pvBuffer, wrapBufs[1].cbBuffer);
         if (!state->response) {
-            result = sspi_error_result_with_message("Unable to base65 encode decrypted message");
+            result = sspi_error_result_with_message("Unable to base64 encode decrypted message");
             goto done;
         }
     }
@@ -428,7 +638,7 @@ auth_sspi_client_wrap(sspi_client_state* state,
     return result;
 }
 
-static sspi_result* sspi_success_result(int ret) {
+static sspi_result* sspi_success_result(INT ret) {
     sspi_result* result = (sspi_result*)malloc(sizeof(sspi_result));
     result->code = ret;
     result->message = NULL;

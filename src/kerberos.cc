@@ -62,7 +62,7 @@ NAN_GETTER(KerberosClient::ResponseConfGetter) {
 
 NAN_GETTER(KerberosClient::ContextCompleteGetter) {
     KerberosClient* client = Nan::ObjectWrap::Unwrap<KerberosClient>(info.This());
-    info.GetReturnValue().Set(Nan::New(client->state()->context_complete));
+    info.GetReturnValue().Set(Nan::New<v8::Boolean>(client->state()->context_complete));
 }
 
 /// KerberosServer
@@ -105,28 +105,28 @@ krb_server_state* KerberosServer::state() const {
 
 NAN_GETTER(KerberosServer::UserNameGetter) {
     KerberosServer* server = Nan::ObjectWrap::Unwrap<KerberosServer>(info.This());
-    (server->_state->username == NULL)
+    (server->state()->username == NULL)
         ? info.GetReturnValue().Set(Nan::Null())
-        : info.GetReturnValue().Set(Nan::New((char*)server->_state->username).ToLocalChecked());
+        : info.GetReturnValue().Set(Nan::New(server->state()->username).ToLocalChecked());
 }
 
 NAN_GETTER(KerberosServer::ResponseGetter) {
     KerberosServer* server = Nan::ObjectWrap::Unwrap<KerberosServer>(info.This());
-    (server->_state->response == NULL)
+    (server->state()->response == NULL)
         ? info.GetReturnValue().Set(Nan::Null())
-        : info.GetReturnValue().Set(Nan::New((char*)server->_state->response).ToLocalChecked());
+        : info.GetReturnValue().Set(Nan::New(server->state()->response).ToLocalChecked());
 }
 
 NAN_GETTER(KerberosServer::TargetNameGetter) {
     KerberosServer* server = Nan::ObjectWrap::Unwrap<KerberosServer>(info.This());
-    (server->_state->targetname == NULL)
+    (server->state()->targetname == NULL)
         ? info.GetReturnValue().Set(Nan::Null())
-        : info.GetReturnValue().Set(Nan::New((char*)server->_state->targetname).ToLocalChecked());
+        : info.GetReturnValue().Set(Nan::New(server->state()->targetname).ToLocalChecked());
 }
 
 NAN_GETTER(KerberosServer::ContextCompleteGetter) {
     KerberosServer* server = Nan::ObjectWrap::Unwrap<KerberosServer>(info.This());
-    info.GetReturnValue().Set(Nan::New(server->_state->context_complete));
+    info.GetReturnValue().Set(Nan::New<v8::Boolean>(server->state()->context_complete));
 }
 
 NAN_METHOD(TestMethod) {

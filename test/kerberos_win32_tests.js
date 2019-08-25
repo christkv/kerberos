@@ -89,6 +89,22 @@ describe('Kerberos (win32)', function() {
     // this is a very basic test used to pass appveyor and provide prebuild binaries
     return kerberos.initializeClient(service, { user: username, password }).then(krbClient => {
       expect(krbClient).to.exist;
+      expect(krbClient.contextComplete).to.be.false;
+      expect(krbClient.username).to.not.exist;
+      expect(krbClient.response).to.not.exist;
+      expect(krbClient.responseConf).to.equal(0);
+    });
+  });
+
+  it('should create a kerberos server', function() {
+    // this is a very basic test used to pass appveyor and provide prebuild binaries
+    return kerberos.initializeServer(service, (err, server) => {
+        expect(err).to.not.exist;
+        expect(server).to.exist;
+        expect(server.contextComplete).to.be.false;
+        expect(server.username).to.not.exist;
+        expect(server.response).to.not.exist;
+        expect(server.targetName).to.not.exist;
     });
   });
 
