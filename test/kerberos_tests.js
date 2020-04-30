@@ -4,8 +4,10 @@ const request = require('request');
 const chai = require('chai');
 const expect = chai.expect;
 const os = require('os');
-const SegfaultHandler = require('segfault-handler');
-SegfaultHandler.registerHandler();
+if (os.type() !== 'OS/390') {
+  const SegfaultHandler = require('segfault-handler');
+  SegfaultHandler.registerHandler();
+}
 chai.use(require('chai-string'));
 
 // environment variables

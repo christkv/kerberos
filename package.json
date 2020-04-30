@@ -31,11 +31,20 @@
     "prebuild-ci": "^2.2.3",
     "prettier": "^1.17.1",
     "request": "^2.88.0",
-    "segfault-handler": "^1.2.0",
     "standard-version": "^4.4.0"
   },
+  "platformDevDependencies": {
+    "segfault-handler": {
+      "version": "^1.2.0",
+      "targets": [
+        "Linux",
+        "Darwin",
+        "Windows_NT"
+      ]
+    }
+  },
   "scripts": {
-    "install": "prebuild-install || node-gyp rebuild",
+    "install": "node installScript.js",
     "format-cxx": "git-clang-format",
     "format-js": "prettier --print-width 100 --tab-width 2 --single-quote --write index.js 'test/**/*.js' 'lib/**/*.js'",
     "lint": "eslint index.js lib test",

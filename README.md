@@ -28,6 +28,22 @@ The `kerberos` package is a C++ extension for Node.js that provides cross-platfo
   2. Install [Python 2.7](https://www.python.org/downloads/) or [Miniconda 2.7](http://conda.pydata.org/miniconda.html) (`v3.x.x` is not supported), and run `npm config set python python2.7`
   3. Launch cmd, `npm config set msvs_version 2015`
 
+**z/OS**
+- Install [IBM SDK for node.js v12.16.1 or later](https://www.ibm.com/ca-en/marketplace/sdk-nodejs-compiler-zos/purchase).
+- Install krb5 libraries for z/OS (which requires [curl for z/OS](https://www.rocketsoftware.com/product-categories/mainframe/curl-for-zos) and [gzip for z/OS](https://www.rocketsoftware.com/product-categories/mainframe/gzip-zos)):
+```
+_ENCODE_FILE_NEW=BINARY curl https://codeload.github.com/ibmruntimes/libkrb5-zos/tar.gz/v1.16.3-zos --output v1.16.3-zos.tar.gz
+gzip -d v1.16.3-zos.tar.gz
+tar -xfUXo v1.16.3-zos.tar
+chtag -tc 819 -R ./libkrb5-zos-1.16.3-zos
+chtag -b -R ./libkrb5-zos-1.16.3-zos/lib
+```
+- Set the following environment variables:
+```
+export KRB5_HOME=/path/to/libkrb5-zos-1.16.3-zos
+export KRB5_CONFIG=/path/to/krb5.conf
+```
+
 ### Installation
 
 Now you can install `kerberos` with the following:

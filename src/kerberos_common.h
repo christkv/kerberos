@@ -3,7 +3,7 @@
 
 #include <nan.h>
 
-#if defined(__linux__) || defined(__APPLE__)
+#if defined(__linux__) || defined(__APPLE__) || defined(__MVS__)
 #include "unix/kerberos_gss.h"
 
 typedef gss_client_state krb_client_state;

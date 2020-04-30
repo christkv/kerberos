@@ -7,7 +7,7 @@
         'src/kerberos.cc'
       ],
       'conditions': [
-        ['OS=="mac" or OS=="linux"', {
+        ['OS=="mac" or OS=="linux" or OS=="zos"', {
           'sources': [
             'src/unix/base64.cc',
             'src/unix/kerberos_gss.cc',
@@ -42,6 +42,21 @@
             'OTHER_LDFLAGS': [ '-stdlib=libc++' ],
             'MACOSX_DEPLOYMENT_TARGET': "10.7"
           }
+        }],
+        ['OS=="zos"', {
+          'include_dirs': [
+            '$(KRB5_HOME)/include/',
+            '$(KRB5_HOME)/include/gssapi/'
+          ],
+          'libraries': [
+            '$(KRB5_HOME)/lib/libgssrpc.a',
+            '$(KRB5_HOME)/lib/libgssapi_krb5.a',
+            '$(KRB5_HOME)/lib/libkrb5.a',
+            '$(KRB5_HOME)/lib/libk5crypto.a',
+            '$(KRB5_HOME)/lib/libcom_err.a',
+            '$(KRB5_HOME)/lib/libkrb5support.a'
+          ],
+          "libraries!": ["-lkrb5", "-lgssapi_krb5"]
         }]
       ]
     }

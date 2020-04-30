@@ -3,8 +3,10 @@ const kerberos = require('..');
 const MongoClient = require('mongodb').MongoClient;
 const expect = require('chai').expect;
 const os = require('os');
-const SegfaultHandler = require('segfault-handler');
-SegfaultHandler.registerHandler();
+if (os.type() !== 'OS/390') {
+  const SegfaultHandler = require('segfault-handler');
+  SegfaultHandler.registerHandler();
+}
 
 const password = process.env.KERBEROS_PASSWORD;
 const realm = process.env.KERBEROS_REALM;
